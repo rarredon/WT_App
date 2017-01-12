@@ -1,0 +1,12 @@
+body { font: 90% arial, sans-serif; }
+div { width: 90%; padding: 10px 4% ; max-width: 700px }
+p.error { color: red; }
+fieldset { padding: 0 1em 1em 1em; margin: 5px; }
+legend { padding: 0.8em; }
+div.line { width: 100%; height: 10px; border-bottom: 2px groove;
+	   text-align: center; padding: 0 ; }
+span { font-size: 18px; background-color: white; padding: 5px; }
+#boxsize { text-align: right; }
+#loading { display: none; }
+#outfilename { display: inline; }
+#extension { display: inline; }
