@@ -6,3 +6,4 @@ Jinja2==2.8
 MarkupSafe==0.23
 Werkzeug==0.11.11
 xlwt==1.1.2
+configparser==3.5.0
