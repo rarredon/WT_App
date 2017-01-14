@@ -33,17 +33,6 @@
       <div id="error">
 	{% if error %}<p class="error">
 	  <strong>Error:</strong> {{ error }}
-	  {% if errorstep != 1 %}
-	    <a href={{ url_for('restore_defaults', errorstep=errorstep) }}>
-	      Click here</a> 
-	    {% if errorstep == 2 %}
-	      to restore the default configuration for Step Two.
-	    {% elif errorstep == 3 %}
-	      to restore the default configuration for Step Three.
-	    {% else %}
-	      to restore the default configuration.	  
-	    {% endif %}
-	  {% endif %}
 	</p>{% endif %}
       </div>
       <div class="form">
@@ -103,7 +92,7 @@
 	    Output filename:
 	    <input size="40" type="text" name="outfilename" id="outfilename"
 	    value="{{ filename }}">
-	    <p id="extension"> {{ ".csv" if not toXLS else ".xls" }} </p>
+	    <p id="extension"> .csv </p>
 	  </fieldset>
 	  <fieldset>
 	    <legend> <b>Step Four:</b> Submit for results </legend>
