@@ -196,7 +196,7 @@ def submit():
 
         # Return the results
         outfile.seek(0)
-        outfilename = app.confif['OUTFILENAME']
+        outfilename = app.config['OUTFILENAME']
         if not outfilename:
             now = datetime.now()
             outfilename = '_'.join(['clash_group',
