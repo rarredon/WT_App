@@ -26,18 +26,23 @@ from flask import Flask, redirect, url_for, render_template, request, Response
 import clash_util_v2 as cutil
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 250*1024*1024  # Allows up to 250 MB
+app.config.from_object(__name__)
+
+app.config.update(dict(
+    MAX_CONTENT_LENGTH = 250*1024*1024,  # Allows up to 250 MB
+    PATHCONFFILENAME = '%s/clash_util.ini' %
+                         os.path.dirname(os.path.realpath(__file__)),
+    BOXSIZE = 3.0,
+    TOXLS = False,
+    JOINONATTR = False
+))
 
 
 @app.route('/')
 def index():
-    if 'DEFAULTS_SET' not in app.config:
-        set_defaults()
-    # Store error, if any
-    error = app.config['ERROR']
-    errorstep = app.config['ERRORSTEP']
-    # Gets path configuration from clash_util file or previous setting
-    pathconf = app.config['PATHCONF']
+    # Gets path configuration from clash_util.ini file
+    with open(app.config['PATHCONFFILENAME'], 'r') as pathconffile:
+        pathconf = pathconffile.read()
     # Gets columns and rows of pathconf to size the textarea
     num_lines = pathconf.count('\n')
     max_width = max(len(line) for line in pathconf.split('\n'))
@@ -51,156 +56,141 @@ def index():
     boxsize = app.config['BOXSIZE']
     toXLS = app.config['TOXLS']
     joinOnAttr = app.config['JOINONATTR']
-    filename = app.config['OUTFILENAME']
+    # Set the default outfilename
+    now = datetime.now()
+    outfilename = '_'.join(['clash_group', now.strftime('%Y-%m-%d-%H%M')])
     return render_template('form-gui.html', conf=pathconf,
                            rows=rows, cols=cols, boxsize=boxsize,
                            toXLS=toXLS, joinOnAttr=joinOnAttr,
-                           filename=filename, error=error, errorstep=errorstep)
-
-
-def set_defaults(errorstep=0):
-    """Sets defaults for the web app form
-
-    Keyord Arguments:
-      errorstep -- The step of the form in which the error was detected;
-        errorstep=0 means no error (used to initialize configurations);
-        errorstep=-1 means an unexpected error (restore all defaults)
-    """
-    # Record the defaults were set
-    app.config['DEFAULTS_SET'] = True
-    # Set default path configuration from clash_util.ini file
-    if errorstep == 0 or errorstep == 2 or errorstep == -1:
-        conf_filename = ('%s/clash_util.ini' %
-                         os.path.dirname(os.path.realpath(__file__)))
-        with open(conf_filename, 'r') as conf_file:
-            app.config['PATHCONF'] = conf_file.read()
-    if errorstep == 0 or errorstep == 3 or errorstep == -1:
-        # Set default boxsize = 3.0
-        app.config['BOXSIZE'] = 3.0
-        # Set csv as default output
-        app.config['TOXLS'] = False
-        # Don't join groups on attr by default
-        app.config['JOINONATTR'] = False
-        # Default outfilename is clash_group_{current date/time}.ext
-        now = datetime.now()
-        filename = '_'.join(['clash_group', now.strftime('%Y-%m-%d-%H%M')])
-        app.config['OUTFILENAME'] = filename
-        # Default error message is empty string and errorstep is 0 (no error)
-    app.config['ERROR'] = ''
-    app.config['ERRORSTEP'] = 0
-
-
-@app.route('/defaults/')
-@app.route('/defaults/<int:errorstep>')
-def restore_defaults(errorstep):
-    set_defaults(errorstep)
-    return redirect(url_for('index'))
+                           outfilename=outfilename, infilename='',
+                           error='', errorstep=0)
 
 
 @app.route('/submit', methods=['GET', 'POST'])
 def submit():
     if request.method == 'POST':
-        # Stores form configurations to app config
-        app.config['PATHCONF'] = request.form['defaultconf']
-        app.config['BOXSIZE'] = request.form['boxsize']
-        app.config['JOINONATTR'] = ('join' in request.form)
-        app.config['TOXLS'] =  (request.form['output'] == 'xls')
-        app.config['OUTFILENAME'] = request.form['outfilename']
-
-        # Get clashresults XML file and handle no file / wrong extension
+        # Step 1
         clashtest_file = request.files['uploadfile']
-        if (not clashtest_file):
-            app.config['ERROR'] = 'No clash file was uploaded'
-            app.config['ERRORSTEP'] = 1
-            return redirect(url_for('index'))
-        if (not clashtest_file.filename.lower().endswith('.xml')):
-            app.config['ERROR'] = 'Uploaded file was not an XML file'
-            app.config['ERRORSTEP'] = 1
-            return redirect(url_for('index'))
-
-        # Try to parse the XML file, handle ParseError exception
-        try:
-            xml_root = ET.parse(clashtest_file).getroot()
-        except ET.ParseError:
-            app.config['ERROR'] = """There were problems parsing your XML
-            file. Check your XML file and make sure there is nothing unusual.
-            """
-            app.config['ERRORSTEP'] = 1
-            return redirect(url_for('index'))
-
-        # Get path config from file or textarea (uses file if file)
+        infilename = clashtest_file.filename
+        # Step 2
+        pathconf = request.form['defaultconf']
         configfile = request.files['configfile'].read().decode('utf-8')
-        if configfile:
-            app.config['PATHCONF'] = configfile
-        configfile_ptr = StringIO(app.config['PATHCONF'])
+        if configfile:  # Path conf file takes precedence over textarea
+            pathconf = configfile
+        num_lines = pathconf.count('\n')
+        max_width = max(len(line) for line in pathconf.split('\n'))
+        if num_lines > 1:
+            cols = max_width + 5
+            rows = num_lines + 2
+        else:
+            cols = 25
+            rows = 9
+        configfile_ptr = StringIO(pathconf)
+        # Step 3
+        boxsize = request.form['boxsize']
+        joinOnAttr = ('join' in request.form)  # True if checked else False
+        toXLS =  (request.form['output'] == 'xls')
+        outfilename = request.form['outfilename']
 
-        # Try to parse path conf, handle NoSectionError or ParsingError
+        ## Assume for now there is no error
+        error = ''
+        errorstep = 0
+
+        ## Get clashresults XML file (Step 1) and find any issues in Step 1
+
+        # Was there even a file?
+        if (not clashtest_file):
+            error = 'No clash file was uploaded.'
+        # Was it an XML file?
+        elif (not clashtest_file.filename.lower().endswith('.xml')):
+            error = 'Uploaded file was not an XML file.'
+        else:
+            # Is the XML file parsable?
+            try:
+                xml_root = ET.parse(clashtest_file).getroot()
+            except ET.ParseError:
+                error = """There were problems parsing your XML file. Check 
+                your XML file and make sure there is nothing unusual.
+                """
+        if error:
+            return render_template('form-gui.html', conf=pathconf,
+                                   rows=rows, cols=cols, boxsize=boxsize,
+                                   toXLS=toXLS, joinOnAttr=joinOnAttr,
+                                   outfilename=outfilename,
+                                   error=error, errorstep=1)
+            
+        ## Get path configuration (Step 2) and find any issues in Step 2
         try:
             path_order = cutil.getPathOrder(configfile_ptr, file_pointer=True)
         except NoSectionError:
-            app.config['ERROR'] = """No section in the config file named
-            "path". You can edit your configuration in Step Two below.
+            error = """No section in the config file named "path". You can 
+            edit your configuration in Step Two below.
             """
-            app.config['ERRORSTEP'] = 2
-            return redirect(url_for('index'))
         except ParsingError:
-            app.config['ERROR'] = """There were problems parsing your
-            path configuration. You can edit your configuration in Step 
-            Two below.
+            error = """There were problems parsing your path configuration. 
+            You can edit your configuration in Step Two below.
             """ 
-            app.config['ERRORSTEP'] = 2
-            return redirect(url_for('index'))
         except DuplicateOptionError as doe:
-            app.config['ERROR'] = """The option '%s' appears more than once in
-            your path configuration. Each option should appear only
-            once. You can edit your configuration in Step Two below.
+            error = """The option '%s' appears more than once in your path 
+            configuration. Each option should appear only once. You can edit
+            your configuration in Step Two below.
             """ % doe.option
-            app.config['ERRORSTEP'] = 2
-            return redirect(url_for('index'))
-        # Set up some additional output options
-        toXLS = app.config['TOXLS']
-        joinOnAttr = app.config['JOINONATTR']
+        except:
+            error = """There were unexpected errors in you path configuration.
+            You can edit your configuration in Step Two below.
+            """
+        if error:
+            return render_template('form-gui.html', conf=pathconf,
+                                   rows=rows, cols=cols, boxsize=boxsize,
+                                   toXLS=toXLS, joinOnAttr=joinOnAttr,
+                                   outfilename=outfilename,
+                                   error=error, errorstep=2)
+
+        ## Get remaining settings and check that boxsize is a positive number
         outfile = BytesIO() if toXLS else StringIO()
-        # Handle non-numeric and negative boxsize
         try:
-            box_size = float(app.config['BOXSIZE'])
+            boxsize = float(boxsize)
+            if boxsize < 0:
+                error = """Box Size given was a negative number. Try a 
+                positive number instead.
+                """
         except ValueError:
-            app.config['ERROR'] = """Box Size given was not a number.
+            error = """Box Size given was not a number.
             Try a to use a number instead.
             """
-            app.config['ERRORSTEP'] = 3
-            return redirect(url_for('index'))
-        if box_size < 0:
-            app.config['ERROR'] = """Box Size given was a negative number.
-            Try a positive number instead.
-            """
-            app.config['ERRORSTEP'] = 3
-            return redirect(url_for('index'))
+        if error:
+            return render_template('form-gui.html', conf=pathconf,
+                                   rows=rows, cols=cols, boxsize=boxsize,
+                                   toXLS=toXLS, joinOnAttr=joinOnAttr,
+                                   outfilename=outfilename,
+                                   error=error, errorstep=3)
 
         # Try to get results, handle Missing Path or other exception
         try:
             cutil.writeClashResults(outfile, xml_root, path_order,
-                                    toXLS, joinOnAttr, box_size)
+                                    toXLS, joinOnAttr, boxsize)
         except cutil.MissingPath as mp:
-            app.config['ERROR'] = """Missing path in the path configuration.
-            Include one of these paths to your path configuration: %s
+            error = """Missing path in the path configuration.
+            Include one of these paths to your path configuration: %s.
             """ % ', '.join(mp.paths)
-            app.config['ERRORSTEP'] = 2
-            return redirect(url_for('index'))
+            errorstep = 2
         except:
-            app.config['ERROR'] = """Unexpected error. Check your input
+            error = """Unexpected error. Check your input
             and settings to make sure there is nothing unusual.
             """
-            app.config['ERRORSTEP'] = -1
-            return redirect(url_for('index'))
+            errorstep = 0
+        if error:
+            return render_template('form-gui.html', conf=pathconf,
+                                   rows=rows, cols=cols, boxsize=boxsize,
+                                   toXLS=toXLS, joinOnAttr=joinOnAttr,
+                                   outfilename=outfilename,
+                                   error=error, errorstep=errorstep)
 
-        # Return the results
+        # Finally, return the results
         outfile.seek(0)
-        outfilename = app.config['OUTFILENAME']
         if not outfilename:
-            now = datetime.now()
-            outfilename = '_'.join(['clash_group',
-                                    now.strftime('%Y-%m-%d-%H%M')])
+            outfilename = ('clash_group_%s' %
+                           datetime.now().strftime('%Y-%m-%d-%H%M'))
         if toXLS and not outfilename.lower().endswith('.xls'):
             outfilename = '.'.join([outfilename, 'xls'])
         elif not toXLS and not outfilename.lower().endswith('.csv'):
@@ -209,7 +199,6 @@ def submit():
         return Response(outfile.read(), mimetype=mimetype,
                         headers={'Content-disposition':
                                  ('attachment; filename=%s' % outfilename)})
-
     # /Submit was reached by GET method
     return redirect(url_for('index'))
 
