@@ -30,22 +30,18 @@
       <div id="loading">
 	  Your results should begin downloading soon!
       </div>
+      {% if error %}
       <div id="error">
-	{% if error %}<p class="error">
+	<p class="error">
 	  <strong>Error:</strong> {{ error }}
 	  {% if errorstep != 1 %}
-	    <a href={{ url_for('restore_defaults', errorstep=errorstep) }}>
+	    <a href={{ url_for('index') }}>
 	      Click here</a> 
-	    {% if errorstep == 2 %}
-	      to restore the default configuration for Step Two.
-	    {% elif errorstep == 3 %}
-	      to restore the default configuration for Step Three.
-	    {% else %}
-	      to restore the default configuration.	  
-	    {% endif %}
+	      to restore all default settings.	  
 	  {% endif %}
-	</p>{% endif %}
+	</p>
       </div>
+      {% endif %}
       <div class="form">
 	<form action="{{ url_for('submit') }}" method="POST"
 	      enctype="multipart/form-data">
@@ -81,7 +77,7 @@
 	    <br>
 	    <br>
 	    <input type="checkbox" name="join" value="Yes"
-		   {{ "checked" if joinOnAttr else "" }}> 
+		   {% if joinOnAttr %} checked {% endif %}>
 	    <label> Join Clash Groups with matching Entity Handles or
 	      Element IDs (<em>optional</em>)
 	    </label>
@@ -102,7 +98,7 @@
 	    <br>
 	    Output filename:
 	    <input size="40" type="text" name="outfilename" id="outfilename"
-	    value="{{ filename }}">
+	    value="{{ outfilename }}">
 	    <p id="extension"> {{ ".csv" if not toXLS else ".xls" }} </p>
 	  </fieldset>
 	  <fieldset>
