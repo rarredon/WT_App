@@ -77,7 +77,7 @@
 	    <br>
 	    <br>
 	    <input type="checkbox" name="join" value="Yes"
-		   {{ "checked" if joinOnAttr else "" }}> 
+		   {% if joinOnAttr %} checked {% endif %}>
 	    <label> Join Clash Groups with matching Entity Handles or
 	      Element IDs (<em>optional</em>)
 	    </label>
