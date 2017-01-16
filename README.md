@@ -6,7 +6,10 @@ The contents (with a short description) are as follows.
 
 ```
 src/
+|--.ebextensions
+   `-- 01_files.config  * Configuration file for Amazon Web Services
 |-- application.py      * Code for web app (uses Flask web application framework)
+|-- app.yaml		* Configuration file for Google App Engine
 |-- clash_util.ini      * Contains the default path configuration used by the app
 |-- clash_util_v2.py    * Code for grouping the clashes and outputting the results
 |-- requirements.txt    * List of required Python libraries as ouput by 'python -m pip freeze'
