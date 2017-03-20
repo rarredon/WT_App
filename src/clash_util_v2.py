@@ -23,7 +23,7 @@ from argparse import ArgumentParser           # for command line parsing
 from configparser import SafeConfigParser     # for file config parsing
 import xml.etree.ElementTree as ET
 import csv
-import xlwt
+import xlwt                                   # write to xls format
 
 
 def main():
@@ -106,7 +106,7 @@ def getGroupInfo(ogClash, group, clashes):
 
     Keyword arguments:
       ogClash -- the origin clash's guid (key for clashes dict)
-      group -- a list of clash guids belonging to the same group
+      group -- a set of clash guids belonging to the same group
       clashes -- clash dict as returned by getClashes function
 
     Returns:
@@ -162,7 +162,7 @@ def joinOnAttrValue(groups, clashes):
         idValToClashes.setdefault(idVal, []).append(key)
 
     # Builds a dict mapping each clash to a list of its origin clashes,
-    # i.e., clashes c in groups.keys() for which clash 
+    # i.e., clashes c in groups.keys() for which clash belongs to groups[c]
     clashToOriginClashes = {}
     for originClash, group in joinedGroups.items():
         for clash in group:
@@ -186,10 +186,11 @@ def joinUpdate(joinedGroups, originClashes, clashToOriginClashes):
     Keyword arguments:
       -- joinedGroups: A dict containing groups of clashes being joined
       -- originClashes: List of keys for joinedGroups dict with groups to join
-      -- clashToOriginClashes: mapping that also gets updated according to
-         updates for joinedGroups
+      -- clashToOriginClashes: mapping from clash to originClashes that gets
+         updated according to updates for joinedGroups
     Returns:
       None; however, joinedGroups and clashToOriginClashes are altered
+
     """
     originClashCount = 0  # will be replaced on first run through loop
     joinedGroup = set()
@@ -223,7 +224,7 @@ def getGroups(clashes, bs):
     Returns:
       groups -- a dict of clash groups that are joined if the clash's
       xyz coords are within the boxsize. The key is the origin clash's
-      guid and the value is a list of guids of clashes in that group.
+      guid and the value is a set of guids of clashes in that group.
 
     """
     # Initializes each group with its origin clash
@@ -238,11 +239,12 @@ def getGroups(clashes, bs):
     deletes = []
     for key, group in groups.items():
         # Ignore already deleted and origin clash
-        toCheck = group.difference(deletes, [key])
+        checkKeys = group.difference(deletes, [key])
 
         # Set difference is empty if group is duplicate or subset
         # (bool = False if set difference is empty, else bool = True)
-        isDupOrSub = not all(bool(group.difference(groups[k])) for k in toCheck)
+        isDupOrSub = not all(bool(group.difference(groups[k]))
+                             for k in checkKeys)
         if isDupOrSub:
             deletes.append(key)
     for key in deletes:
