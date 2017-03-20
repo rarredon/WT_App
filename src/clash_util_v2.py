@@ -1,4 +1,4 @@
-#!bin/python
+#!/bin/python
 # ----------------------------------------------------------------------
 # clash_util_v2.py
 # ----------------------------------------------------------------------
@@ -15,7 +15,8 @@
 # Date: October 2016
 # ----------------------------------------------------------------------
 # Updates: (Who/When/What)
-#
+#   Ryan / 3-17-17 / Refactoring the joinOnAttr function to make it
+#                    more readable and efficient
 # ----------------------------------------------------------------------
 
 from argparse import ArgumentParser           # for command line parsing
@@ -139,7 +140,7 @@ def getGroupInfo(ogClash, group, clashes):
 
 
 def joinOnAttrValue(groups, clashes):
-    """Joins clash groups whose clashes match on attribute value
+    """Joins clash groups whose clashes match on attribute/id value
 
     Keyword arguments:
       groups -- a dict of clash groups as returned by getGroups function
@@ -147,59 +148,69 @@ def joinOnAttrValue(groups, clashes):
 
     Returns:
       joinedGroups -- A dict of groups joined by attribute values. The
-      key is the origin clash's guid and the value is a list of guids
+      key is the origin clash's guid and the value is a set of guids
       of clashes in that group.
 
     """
+    joinedGroups = groups.copy()
+
     # Builds a lookup dictionary mapping attribute value to clashes
-    # with that possesses that attribute value
-    attrValsToClash = {}
+    # that possesses that attribute value
+    idValToClashes = {}
     for key, clash in clashes.items():
-        attrVal = clash['objblame']['idval']
-        attrValsToClash.setdefault(attrVal, []).append(key)
+        idVal = clash['objblame']['idval']
+        idValToClashes.setdefault(idVal, []).append(key)
 
-    # Now we begin the joining
-    skip = []
-    joinedGroups = {}
-    for clash, group in groups.items():
-        if clash in skip:  # Clash was already joined with another group
-            continue
-        clashGroup = [clashes[clash] for clash in group]
-        joinKeys = set(clash['objblame']['idval'] for clash in clashGroup)
-        joinedOn = set()
-        ogClash = clash
-        ogClashCount = len(group)
-        joinedGroup = set(group)
-        while joinKeys:
-            joinedOn.update(joinKeys)
-            # Join groups on each key
-            for joinKey in list(joinKeys):
-                for joinClash in attrValsToClash[joinKey]:
-                    if joinClash not in groups:
-                        # Find ogClash whose group contains joinClash
-                        for key, grp in groups.items():
-                            if joinClash in grp:
-                                joinClash = key
-                                break
-                    joinGroup = groups[joinClash]
-                    joinCount = len(joinGroup)
-                    joinedGroup = joinedGroup.union(joinGroup)
-                    if joinCount > ogClashCount:
-                        ogClash = joinClash
-                        ogClashCount = joinCount
+    # Builds a dict mapping each clash to a list of its origin clashes,
+    # i.e., clashes c in groups.keys() for which clash 
+    clashToOriginClashes = {}
+    for originClash, group in joinedGroups.items():
+        for clash in group:
+            clashToOriginClashes.setdefault(clash, []).append(originClash)
 
-                    # Update join keys with any new keys
-                    clashGroup = [clashes[clash] for clash in joinGroup]
-                    joinKeys.update(clash['objblame']['idval']
-                                    for clash in clashGroup)
-
-                    # No longer need to consider this clash
-                    skip.append(joinClash)
-
-            # Remove joinKeys that have already been joined on
-            joinKeys.difference_update(joinedOn)
-        joinedGroups[ogClash] = list(joinedGroup)
+    # Iterate over all attribute values and join the groups of origin clashes
+    # that have clashes who match on attribute value
+    for clashes in idValToClashes.values():
+        # Set to contain origin clashes whose groups have clashes with
+        # attribute value = idVal
+        originClashes = set()
+        for clash in clashes:
+            originClashes.update(clashToOriginClashes[clash])
+        joinUpdate(joinedGroups, originClashes, clashToOriginClashes)
     return joinedGroups
+
+
+def joinUpdate(joinedGroups, originClashes, clashToOriginClashes):
+    """Helper function for joinOnAttrValue that performs a join update
+
+    Keyword arguments:
+      -- joinedGroups: A dict containing groups of clashes being joined
+      -- originClashes: List of keys for joinedGroups dict with groups to join
+      -- clashToOriginClashes: mapping that also gets updated according to
+         updates for joinedGroups
+    Returns:
+      None; however, joinedGroups and clashToOriginClashes are altered
+    """
+    originClashCount = 0  # will be replaced on first run through loop
+    joinedGroup = set()
+    for clash in originClashes:
+        group = joinedGroups[clash]
+        joinedGroup.update(group)
+        # Make origin clash the clash with largest group
+        if len(group) > originClashCount:
+            originClash = clash
+            originClashCount = len(group)
+    joinedGroups[originClash].update(joinedGroup)
+
+    # Remove items from joinedGroups that were added to group for originClash
+    # and update clashToOriginClashes mapping
+    for clash in originClashes:
+        if clash != originClash:
+            for c in joinedGroups[clash]:
+                clashToOriginClashes[c].remove(clash)
+                if originClash not in clashToOriginClashes[c]:
+                    clashToOriginClashes[c].append(originClash)
+            del joinedGroups[clash]
 
 
 def getGroups(clashes, bs):
@@ -216,27 +227,24 @@ def getGroups(clashes, bs):
 
     """
     # Initializes each group with its origin clash
-    groups = dict([(key, [key]) for key in clashes])
+    groups = dict([(key, set([key])) for key in clashes])
     for key1, clash1 in clashes.items():
         for key2, clash2 in clashes.items():
             if (key1 != key2 and
                     clashesOverlap(clash1, clash2, bs)):
-                groups[key1].append(key2)
+                groups[key1].add(key2)
 
     # Removes groups that are duplicates or subsets of another group
     deletes = []
-    for key1, group in groups.items():
-        groupSet = set(group)
-
+    for key, group in groups.items():
         # Ignore already deleted and origin clash
-        keys = groupSet.difference(deletes, [key1])
+        toCheck = group.difference(deletes, [key])
 
         # Set difference is empty if group is duplicate or subset
         # (bool = False if set difference is empty, else bool = True)
-        isDupOrSub = not all(bool(groupSet.difference(groups[key2]))
-                             for key2 in keys)
+        isDupOrSub = not all(bool(group.difference(groups[k])) for k in toCheck)
         if isDupOrSub:
-            deletes.append(key1)
+            deletes.append(key)
     for key in deletes:
         del groups[key]
     return groups
