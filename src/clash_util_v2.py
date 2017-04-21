@@ -17,6 +17,7 @@
 # Updates: (Who/When/What)
 #   Ryan / 3-17-17 / Refactoring the joinOnAttr function to make it
 #                    more readable and efficient
+#   Ryan / 4-21-17 / Default arg to getCommandLineArgs changed to None
 # ----------------------------------------------------------------------
 
 from argparse import ArgumentParser           # for command line parsing
@@ -399,7 +400,7 @@ def getPathOrder(config_file, file_pointer=False):
     return [path_file_name for _, path_file_name in path_config]
 
 
-def getCommandLineArgs(arglist=[]):
+def getCommandLineArgs(arglist=None):
     """Sets up argument parser and gets command line arguments
 
     Keyword arguments:
