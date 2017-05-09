@@ -399,7 +399,6 @@ def getPathOrder(config_file, file_pointer=False):
     # Get values if "key=value" pair, else get key (w/ no value)
     path_config = [val if val else key for s in parser.sections()
                    for key, val in parser.items(s)]
-    print(path_config)
     return path_config
 
 
