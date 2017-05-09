@@ -123,18 +123,19 @@ def submit():
         try:
             path_order = cutil.getPathOrder(configfile_ptr, file_pointer=True)
         except NoSectionError:
-            error = """No section in the config file named "path". You can 
-            edit your configuration in Step Two below.
+            error = """No section found in the ini file. Edit your
+            path configuration in Step Two below so that [SECTION] is at the
+            beginning  of the file.
             """
         except ParsingError:
             error = """There were problems parsing your path configuration. 
             You can edit your configuration in Step Two below.
             """ 
         except DuplicateOptionError as doe:
-            error = """The option '%s' appears more than once in your path 
-            configuration. Each option should appear only once. You can edit
-            your configuration in Step Two below.
-            """ % doe.option
+            error = """The option '%s' appears more than once in section 
+            '[%s]' of your path configuration. Each option should appear only
+            once. You can edit your configuration in Step Two below.
+            """ % (doe.option, doe.section)
         except:
             error = """There were unexpected errors in you path configuration.
             You can edit your configuration in Step Two below.

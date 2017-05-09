@@ -11,13 +11,15 @@
 # Input: XML file with clash test results
 # Output: CSV or XLS file with clash groups
 # Author: Ryan Arredondo
-# Email: sucharyan@gmail.com
+# Email: ryan.c.arredondo@gmail.com
 # Date: October 2016
 # ----------------------------------------------------------------------
 # Updates: (Who/When/What)
 #   Ryan / 3-17-17 / Refactoring the joinOnAttr function to make it
 #                    more readable and efficient
 #   Ryan / 4-21-17 / Default arg to getCommandLineArgs changed to None
+#   Ryan / 5-09-17 / getPathOrder sorted keys lexicographically which
+#                    was undesirable; now uses order given in ini file
 # ----------------------------------------------------------------------
 
 from argparse import ArgumentParser           # for command line parsing
@@ -387,17 +389,18 @@ def getPathOrder(config_file, file_pointer=False):
 
     """
     # Initialize parser and read in the configurations
-    parser = SafeConfigParser()
+    parser = SafeConfigParser(allow_no_value=True, strict=True)
+    parser.optionxform = str  # Makes key values case sensitive
     if file_pointer:
         parser.readfp(config_file)
     else:
         parser.read(config_file)
 
-    # Sorts key=value entries in [path] section alphanumerically by key
-    path_config = sorted(parser.items('path'), key=lambda pair: pair[0])
-
-    # Get only values from sorted key=value entries in [path]
-    return [path_file_name for _, path_file_name in path_config]
+    # Get values if "key=value" pair, else get key (w/ no value)
+    path_config = [val if val else key for s in parser.sections()
+                   for key, val in parser.items(s)]
+    print(path_config)
+    return path_config
 
 
 def getCommandLineArgs(arglist=None):
