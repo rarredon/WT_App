@@ -1,0 +1,41 @@
+To run the app follow the instructions below depending on your OS.
+
+-------------------------------------------------------------------
+On Windows (tested on Windows 10)
+-------------------------------------------------------------------
+
+1. Install Python 3: https://www.python.org/downloads/
+
+  Note: Python 2 should work but is not recommended
+
+2. Double-click SETUP.bat.
+
+  Note: You only need to do this once to download the libraries
+        required by the app.
+
+3. Double-click RUN.bat.
+
+  Note: You can create a shortcut to RUN.bat on your Desktop and
+        double-click the shortcut to run the app.
+
+-------------------------------------------------------------------
+On Linux (tested) or MAC (not tested)
+-------------------------------------------------------------------
+
+1. Install Python 3: https://www.python.org/downloads/
+
+2. Open a termial and run the following commands:
+
+    >>> cd APP_DIRECTORY
+    >>> pip install -U pip
+    >>> pip install -r requirements.txt
+
+    Note 1: Replace APP_DIRECTORY with location of app
+    Note 2: Might need root priveleges (e.g., via sudo)
+
+3. Run the app with the following command:
+
+    >>> python application.py
+
+    Note: You can create a shortcut to application.py on your
+ 	  Desktop and double-click the shortcut to run the app.
