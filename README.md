@@ -18,4 +18,8 @@ src/
     `-- styles.css      * CSS file describing styles used in web app
 \-- templates
     `-- form-gui.html   * HTML template (Jinja2) describing html form in web app
+ 
+ INSTRUCTIONS.txt       * Instructions for running the app locally
+ SETUP.bat              * Batch executable for setting up the app (downloads requirements)
+ RUN.bat                * Batch executable for running the app
 ```
