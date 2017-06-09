@@ -1,7 +1,7 @@
 @ECHO OFF
 ECHO.
 ECHO Starting the clash grouper app...
-START /B python.exe application_local.py 2> NUL
+START /B python.exe src\application_local.py 2> NUL
 ECHO Started.
 ECHO.
 ECHO Opening the default web browser...
