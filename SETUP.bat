@@ -4,7 +4,7 @@ ECHO Downloading required packages to run clash grouper app...
 ECHO.
 python.exe -m pip install -U pip
 ECHO.
-python.exe -m pip install -r requirements.txt
+python.exe -m pip install -r src\requirements.txt
 ECHO.
 ECHO Done setting up the clash grouper app.
 ECHO.
