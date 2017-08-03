@@ -20,6 +20,7 @@
 #   Ryan / 4-21-17 / Default arg to getCommandLineArgs changed to None
 #   Ryan / 5-09-17 / getPathOrder sorted keys lexicographically which
 #                    was undesirable; now uses order given in ini file
+#   Matt /06-22-17/ Added X,Y,Z Coordinate in the writeClashResults function
 # ----------------------------------------------------------------------
 
 from argparse import ArgumentParser           # for command line parsing
@@ -63,7 +64,11 @@ def writeClashResults(outfile, clashroot, path_order,
               'Origin Attribute Name',
               'Origin Attribute Value',
               'Group Attribute Names',
-              'Group Attribute Values']
+              'Group Attribute Values',
+              'X Coordinate',
+              'Y Coordinate',
+              'Z Coordinate',
+              'Status']
 
     # Initializes outputs
     if toXLS:
@@ -111,6 +116,8 @@ def getGroupInfo(ogClash, group, clashes):
       ogClash -- the origin clash's guid (key for clashes dict)
       group -- a set of clash guids belonging to the same group
       clashes -- clash dict as returned by getClashes function
+      xyzCoor -- the location of the clash in space
+      status -- established if the clash is new or from a previous run 
 
     Returns:
       A list containing the contents of one row being written to output
@@ -129,8 +136,10 @@ def getGroupInfo(ogClash, group, clashes):
     ogPathBlame = ogClash['pathblame']
     ogAttrName = ogClash['objblame']['idname']
     ogAttrVal = ogClash['objblame']['idval']
-    groupAttrNames = ', '.join(groupNames)
-    groupAttrVals = ', '.join(groupVals)
+    groupAttrNames = ', '.join(name for name in groupNames if name is not None)
+    groupAttrVals = ', '.join(val for val in groupVals if val is not None)
+    xyzCoor = ogClash['coords']
+    status = ogClash ['status']
 
     return [ogClashName,
             clashGroupNames,
@@ -139,7 +148,11 @@ def getGroupInfo(ogClash, group, clashes):
             ogAttrName,
             ogAttrVal,
             groupAttrNames,
-            groupAttrVals]
+            groupAttrVals,
+            xyzCoor[0],
+            xyzCoor[1],
+            xyzCoor[2],
+            status]
 
 
 def joinOnAttrValue(groups, clashes):
@@ -162,7 +175,8 @@ def joinOnAttrValue(groups, clashes):
     idValToClashes = {}
     for key, clash in clashes.items():
         idVal = clash['objblame']['idval']
-        idValToClashes.setdefault(idVal, []).append(key)
+        if idVal is not None:
+            idValToClashes.setdefault(idVal, []).append(key)
 
     # Builds a dict mapping each clash to a list of its origin clashes,
     # i.e., clashes c in groups.keys() for which clash belongs to groups[c]
@@ -173,11 +187,11 @@ def joinOnAttrValue(groups, clashes):
 
     # Iterate over all attribute values and join the groups of origin clashes
     # that have clashes who match on attribute value
-    for clashes in idValToClashes.values():
+    for matchingClashes in idValToClashes.values():
         # Set to contain origin clashes whose groups have clashes with
         # attribute value = idVal
         originClashes = set()
-        for clash in clashes:
+        for clash in matchingClashes:
             originClashes.update(clashToOriginClashes[clash])
         joinUpdate(joinedGroups, originClashes, clashToOriginClashes)
     return joinedGroups
@@ -293,7 +307,8 @@ def getClashes(test, paths):
     for clash in clashresults.findall('clashresult'):
         # Some info about the clash
         name = clash.get('name')
-        guid = clash.get('guid')    # A unique identifier
+        guid = clash.get('guid')  # A unique identifier
+        status = clash.get('status')
         coords = getClashCoords(clash)
         clashobjects = getClashObjects(clash)
         clashpaths = [obj['pathfile'] for obj in clashobjects]
@@ -318,7 +333,8 @@ def getClashes(test, paths):
         clashes[guid] = {'name': name,
                          'coords': coords,
                          'pathblame': pathblame,
-                         'objblame': objblame}
+                         'objblame': objblame,
+                         'status' : status}
     return clashes
 
 
@@ -356,6 +372,9 @@ def getClashObjects(clash):
         if attribs is not None:  # Which it sometimes is for some reason
             idname = attribs.find('name').text
             idval = attribs.find('value').text
+        else:
+            idname = None
+            idval = None
         pathlink = obj.find('pathlink')
         pathfile = pathlink[2].text
         objects.append({'idname': idname,
