@@ -1,4 +1,4 @@
-#!/bin/python
+#!/bin/python3
 # ----------------------------------------------------------------------
 # clash_util_v2.py
 # ----------------------------------------------------------------------
@@ -15,12 +15,21 @@
 # Date: October 2016
 # ----------------------------------------------------------------------
 # Updates: (Who/When/What)
-#   Ryan / 3-17-17 / Refactoring the joinOnAttr function to make it
-#                    more readable and efficient
-#   Ryan / 4-21-17 / Default arg to getCommandLineArgs changed to None
-#   Ryan / 5-09-17 / getPathOrder sorted keys lexicographically which
-#                    was undesirable; now uses order given in ini file
-#   Matt /06-22-17/ Added X,Y,Z Coordinate in the writeClashResults function
+#   Ryan / 03-17-17 / Refactoring the joinOnAttr function to make it
+#                     more readable and efficient
+#   Ryan / 04-21-17 / Default arg to getCommandLineArgs changed to None
+#   Ryan / 05-09-17 / getPathOrder sorted keys lexicographically which
+#                     was undesirable; now uses order given in ini file
+#   Matt / 06-22-17 / Added X,Y,Z Coordinate in the writeClashResults
+#                     function
+#   Ryan / 08-03-17 / Set idname, idval to None if clashobject has no
+#                     objectattribute section; no joining is performed
+#                     on these clash objects when -j option is set
+#   Ryan / 08-07-17 / Changes to getGroups function to sort clashes by
+#                     x coord first and then check for overlaps
+#                     thereby reducing the number of iterations in
+#                     quadratic algorithm to check overlaps
+#   Ryan / 08-07-17 / Added quiet option with -q or --quiet
 # ----------------------------------------------------------------------
 
 from argparse import ArgumentParser           # for command line parsing
@@ -28,6 +37,8 @@ from configparser import SafeConfigParser     # for file config parsing
 import xml.etree.ElementTree as ET
 import csv
 import xlwt                                   # write to xls format
+
+__version__ = '1.1.0'
 
 
 def main():
@@ -40,11 +51,12 @@ def main():
         writeClashResults(outfile, xml_root, path_order,
                           toXLS=args.output_xls,
                           joinOnAttr=args.join_on_attribute,
-                          box_size=args.box_size)
+                          box_size=args.box_size,
+                          quiet=args.quiet)
 
 
-def writeClashResults(outfile, clashroot, path_order,
-                      toXLS=False, joinOnAttr=False, box_size=3.0):
+def writeClashResults(outfile, clashroot, path_order, toXLS=False,
+                      joinOnAttr=False, box_size=3.0, quiet=False):
     """Writes the results of the clash grouping to outfile
 
     Keyword arguments:
@@ -85,7 +97,8 @@ def writeClashResults(outfile, clashroot, path_order,
     # Iterate over each clash test and output the results
     for clashtest in clashroot.iter('clashtest'):
         testname = clashtest.get('name')
-        print('Working on %s...' % testname)
+        if not quiet:
+            print('Working on %s...' % testname)
         clashes = getClashes(clashtest, path_order)
         clashGroups = getGroups(clashes, box_size)
         if joinOnAttr:
@@ -102,11 +115,14 @@ def writeClashResults(outfile, clashroot, path_order,
             else:
                 writer = csv.writer(outfile)
                 writer.writerow(line)
-        print('Done with %s.' % testname)
+        if not quiet:
+            print('Done with %s.' % testname)
+
     # Saves xls file if xls option was used
     if toXLS:
         wb.save(outfile)
-    print('Finished all clashtests.')
+    if not quiet:
+        print('Finished all clashtests.')
 
 
 def getGroupInfo(ogClash, group, clashes):
@@ -117,7 +133,7 @@ def getGroupInfo(ogClash, group, clashes):
       group -- a set of clash guids belonging to the same group
       clashes -- clash dict as returned by getClashes function
       xyzCoor -- the location of the clash in space
-      status -- established if the clash is new or from a previous run 
+      status -- established if the clash is new or from a previous run
 
     Returns:
       A list containing the contents of one row being written to output
@@ -139,7 +155,7 @@ def getGroupInfo(ogClash, group, clashes):
     groupAttrNames = ', '.join(name for name in groupNames if name is not None)
     groupAttrVals = ', '.join(val for val in groupVals if val is not None)
     xyzCoor = ogClash['coords']
-    status = ogClash ['status']
+    status = ogClash['status']
 
     return [ogClashName,
             clashGroupNames,
@@ -244,13 +260,36 @@ def getGroups(clashes, bs):
       guid and the value is a set of guids of clashes in that group.
 
     """
+    # Return empty dict if no clashes (clashes == empty dict)
+    if not clashes:
+        return {}
+
     # Initializes each group with its origin clash
     groups = dict([(key, set([key])) for key in clashes])
-    for key1, clash1 in clashes.items():
-        for key2, clash2 in clashes.items():
-            if (key1 != key2 and
-                    clashesOverlap(clash1, clash2, bs)):
+
+    # Sort the clashes by x coordinate
+    sortedclashes = sorted(clashes.items(), key=lambda c: c[1]['coords'][0])
+
+    # Iterate over clashes and check nearby clashes if x2-x1 <= boxsize
+    # and then if clashes overlap and react accordingly
+    for idx, (key1, clash1) in enumerate(sortedclashes):
+        idx += 1
+        try:
+            key2, clash2 = sortedclashes[idx]
+        except IndexError:  # idx > len(list); we went too far!
+            break
+        x1 = clash1['coords'][0]
+        x2 = clash2['coords'][0]
+        while (x2 - x1) <= bs:
+            if clashesOverlap(clash1, clash2, bs):
                 groups[key1].add(key2)
+                groups[key2].add(key1)
+            idx += 1
+            try:
+                key2, clash2 = sortedclashes[idx]
+            except IndexError:  # idx > len(list); we went too far!
+                break
+            x2 = clash2['coords'][0]
 
     # Removes groups that are duplicates or subsets of another group
     deletes = []
@@ -334,7 +373,7 @@ def getClashes(test, paths):
                          'coords': coords,
                          'pathblame': pathblame,
                          'objblame': objblame,
-                         'status' : status}
+                         'status': status}
     return clashes
 
 
@@ -453,6 +492,8 @@ def getCommandLineArgs(arglist=None):
                         help='Name of file to output')
     parser.add_argument('-j', '--join-on-attribute', action='store_true',
                         help='Joins clashes by entity handle or Element ID')
+    parser.add_argument('-q', '--quiet', action='store_true',
+                        help='No output written to stdout')
 
     # parse the arguments and handle the file extension
     args = parser.parse_args(arglist) if arglist else parser.parse_args()
