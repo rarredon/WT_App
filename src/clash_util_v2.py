@@ -30,6 +30,11 @@
 #                     thereby reducing the number of iterations in
 #                     quadratic algorithm to check overlaps
 #   Ryan / 08-07-17 / Added quiet option with -q or --quiet
+#   Ryan / 09-03-17 / Added functionality to split the contents of cells
+#                     which exceed 32,767 chars
+#   Ryan / 09-03-17 / Added option -n / --no-split to not split large
+#                     cells (more than 32,767 chars); can only be used
+#                     for CSV output; -x with -n will raise an error
 # ----------------------------------------------------------------------
 
 from argparse import ArgumentParser           # for command line parsing
@@ -38,10 +43,11 @@ import xml.etree.ElementTree as ET
 import csv
 import xlwt                                   # write to xls format
 
-__version__ = '1.1.0'
+__version__ = '1.2.1'
 
 
 def main():
+    """Function called if run from command-line"""
     # Set up the configurations
     args = getCommandLineArgs()
     path_order = getPathOrder(args.config_file)
@@ -52,11 +58,13 @@ def main():
                           toXLS=args.output_xls,
                           joinOnAttr=args.join_on_attribute,
                           box_size=args.box_size,
-                          quiet=args.quiet)
+                          quiet=args.quiet,
+                          no_split=args.no_split)
 
 
 def writeClashResults(outfile, clashroot, path_order, toXLS=False,
-                      joinOnAttr=False, box_size=3.0, quiet=False):
+                      joinOnAttr=False, box_size=3.0, quiet=False,
+                      no_split=False):
     """Writes the results of the clash grouping to outfile
 
     Keyword arguments:
@@ -65,6 +73,9 @@ def writeClashResults(outfile, clashroot, path_order, toXLS=False,
       path_order -- the path order configured in the .ini file
       toXLS -- output to XLS if True, else output to CSV
       joinOnAttr -- group clashes by entity handle / element ID if true
+      box_size -- coord-wise distance between clashes for grouping
+      quiet -- no output to stdout
+      no_split -- do not split large cells if true; only if toXLS==False
 
     """
     # The columns that will be written to output
@@ -110,11 +121,23 @@ def writeClashResults(outfile, clashroot, path_order, toXLS=False,
             line.extend(groupInfo)
             if toXLS:
                 for col, contents in enumerate(line):
-                    ws.write(row, col, contents)
+                    if (type(contents) is str) and (len(contents) > 32767):
+                        contents, continued = split_cell(contents, header[col])
+                        ws.write(row, col, contents)
+                        line.extend(continued)
+                    else:
+                        ws.write(row, col, contents)
                 row += 1
             else:
                 writer = csv.writer(outfile)
+                if not no_split:
+                    for col, cell in enumerate(line):
+                        if (type(cell) is str) and (len(cell) > 32767):
+                            cell, continued = split_cell(cell, header[col])
+                            line[col] = cell
+                            line.extend(continued)
                 writer.writerow(line)
+
         if not quiet:
             print('Done with %s.' % testname)
 
@@ -123,6 +146,35 @@ def writeClashResults(outfile, clashroot, path_order, toXLS=False,
         wb.save(outfile)
     if not quiet:
         print('Finished all clashtests.')
+
+def split_cell(contents, col):
+    """Splits contents of a cell into chunks smaller than 32767 chars
+
+    Keyword arguments:
+      cell -- The contents of the cell that are to be split; assumes contents
+              are comma separated and tries to split at commas.
+      col -- Column name corresponding to the cell being split
+
+    Returns:
+      head -- str that will be written back to the cell of interest
+      remains -- List of strs consisting of remaining chunks
+    """
+    cutoff = contents.rfind(',', 0, 32767)
+    if cutoff == -1:  # Didn't find ',' substr; this shouldn't really happen
+        cutoff = 32767
+    head = contents[0:cutoff]
+    remaining = contents[cutoff + 2:]  # + 2 skips the substr: ', '
+    prefix = '(' + col + ' cont.) '
+    prefixlen = len(prefix)
+    remains = []
+    while len(remaining) > (32767 - prefixlen):
+        cutoff = remaining.rfind(',', 0, 32767-prefixlen)
+        chunk = prefix + remaining[0:cutoff]
+        remains.append(chunk)
+        remaining = remaining[cutoff + 2:]  # + 2 skips the substr: ', '
+    if remaining:
+        remains.append(prefix + remaining)
+    return head, remains
 
 
 def getGroupInfo(ogClash, group, clashes):
@@ -485,8 +537,6 @@ def getCommandLineArgs(arglist=None):
     parser.add_argument('-b', '--box-size', type=float,
                         default=3.0,
                         help='Size of the box in feet')
-    parser.add_argument('-x', '--output-xls', action='store_true',
-                        help='Output an Excel xls file')
     parser.add_argument('-o', '--output-filename',
                         default='clash_group',
                         help='Name of file to output')
@@ -494,6 +544,12 @@ def getCommandLineArgs(arglist=None):
                         help='Joins clashes by entity handle or Element ID')
     parser.add_argument('-q', '--quiet', action='store_true',
                         help='No output written to stdout')
+    group = parser.add_mutually_exclusive_group()
+    # The following options conflict with each other
+    group.add_argument('-x', '--output-xls', action='store_true',
+                       help='Output an Excel xls file')
+    group.add_argument('-n', '--no-split', action='store_true',
+                       help='Don\'t split cells > 32767 chars')
 
     # parse the arguments and handle the file extension
     args = parser.parse_args(arglist) if arglist else parser.parse_args()
